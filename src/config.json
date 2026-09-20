@@ -1,0 +1,13 @@
+{
+  "FP_SIZING": "absolute",
+  "PL_TARGET_DENSITY": 0.45,
+  "PL_ROUTABILITY_DRIVEN": 1,
+  "DPL_CELL_PADDING": 1,
+  "GRT_ADJUSTMENT": 0.05,
+  "GRT_ALLOW_CONGESTION": true,
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 20.0,
+  "RT_MAX_LAYER": "TopMetal1",
+  "FP_PDN_LOWER_LAYER": "Metal2",
+  "FP_PDN_UPPER_LAYER": "TopMetal1"
+}

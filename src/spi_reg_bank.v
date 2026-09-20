@@ -11,13 +11,16 @@ module spi_reg_bank (
     output reg        spi_miso,
     
     output wire [3:0] f_shift_out,
-    output wire [3:0] q_shift_out
+    output wire [3:0] q_shift_out,
+    output wire [1:0] out_sel
 );
 
     reg [7:0] reg_00_ctrl;
+    reg [1:0] reg_01_mux;
     
     assign q_shift_out = reg_00_ctrl[7:4];
     assign f_shift_out = reg_00_ctrl[3:0];
+    assign out_sel     = reg_01_mux;
 
     reg [2:0] sck_sync;
     reg [2:0] cs_n_sync;
@@ -41,6 +44,7 @@ module spi_reg_bank (
     wire cs_n_fall = (cs_n_sync[2:1] == 2'b10);
 
     reg [15:0] shift_reg;
+    reg [7:0]  read_data;  
     reg [4:0]  bit_cnt;
     reg        is_write;
     reg [6:0]  req_addr;
@@ -48,15 +52,15 @@ module spi_reg_bank (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             reg_00_ctrl <= 8'h24; 
+            reg_01_mux  <= 2'b10; // Default to Band-Pass
             bit_cnt     <= 0;
             shift_reg   <= 0;
+            read_data   <= 0;
             is_write    <= 0;
             req_addr    <= 0;
             spi_miso    <= 0;
         end else begin
-            if (cs_n_fall) begin
-                bit_cnt <= 0;
-            end
+            if (cs_n_fall) bit_cnt <= 0;
             
             if (cs_n_act) begin
                 if (sck_rise) begin
@@ -69,24 +73,28 @@ module spi_reg_bank (
                     end
                     
                     if (bit_cnt == 15 && is_write) begin
-                        if (req_addr == 7'h00) begin
-                            reg_00_ctrl <= {shift_reg[6:0], mosi_sync[1]};
-                        end
+                        if (req_addr == 7'h00) reg_00_ctrl <= {shift_reg[6:0], mosi_sync[1]};
+                        if (req_addr == 7'h01) reg_01_mux  <= {shift_reg[0], mosi_sync[1]};
                     end
                 end
                 
                 if (sck_fall) begin
-                    if (bit_cnt == 8 && !is_write) begin
-                        if (req_addr == 7'h00) begin
-                            shift_reg[7:0] <= reg_00_ctrl;
-                        end else begin
-                            shift_reg[7:0] <= 8'h00;
+                    if (!is_write) begin
+                        if (bit_cnt == 8) begin
+                            if (req_addr == 7'h00) begin
+                                spi_miso  <= reg_00_ctrl[7];
+                                read_data <= {reg_00_ctrl[6:0], 1'b0};
+                            end else if (req_addr == 7'h01) begin
+                                spi_miso  <= 1'b0;
+                                read_data <= {6'b0, reg_01_mux};
+                            end else begin
+                                spi_miso  <= 1'b0;
+                                read_data <= 8'h00;
+                            end
+                        end else if (bit_cnt > 8) begin
+                            spi_miso  <= read_data[7];
+                            read_data <= {read_data[6:0], 1'b0};
                         end
-                    end
-                    
-                    if (bit_cnt >= 8) begin
-                        spi_miso <= shift_reg[7];
-                        shift_reg[7:0] <= {shift_reg[6:0], 1'b0};
                     end
                 end
             end else begin

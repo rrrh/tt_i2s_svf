@@ -1,43 +1,45 @@
-# Tiny Tapeout project information
+yaml_version: 6
 project:
   author: "Audio Filter ASIC Developer"
+  tiles: "1x2"
   title: "Multiplierless State Variable Filter (SVF) Audio Chip"
   language: "Verilog"
   description: "An oversampled, multiplierless audio filter core featuring dynamic SPI register control and bidirectional I2S audio interfaces targeting the IHP SG13G PDK."
-
-# Include your single or multiple verilog files
-source_files:
-  - "tt_um_audio_filter.v"
-  - "audio_filter_core.v"
-  - "svf_multiplierless_os.v"
-  - "spi_reg_bank.v"
-  - "i2s_rx.v"
-  - "i2s_tx.v"
-
-# The top-level module name in your Verilog code
-top_module: "tt_um_audio_filter"
+  
+  # Include your single or multiple verilog files
+  source_files:
+    - "tt_um_audio_filter.v"
+    - "audio_filter_core.v"
+    - "svf_multiplierless_os.v"
+    - "spi_reg_bank.v"
+    - "i2s_rx.v"
+    - "i2s_tx.v"
+    
+  # The top-level module name in your Verilog code
+  top_module: "tt_um_audio_filter"
+  
+  # The clock frequency your design targets (50 MHz system clock)
+  clock_hz: 50000000
 
 # Define the physical pin mappings for Tiny Tapeout
 pinout:
-  # --- Dedicated Inputs (ui_in) ---
-  ui[0]: "i2s_ws"      # I2S Word Select (Frame Clock)
-  ui[1]: "i2s_sck"     # I2S Serial Clock
-  ui[2]: "i2s_sd_in"   # I2S Serial Data Input (Audio In)
-  ui[3]: "spi_cs_n"    # SPI Chip Select (Active Low)
-  ui[4]: "spi_sck"     # SPI Serial Clock
-  ui[5]: "spi_mosi"    # SPI Master Out Slave In
-  ui[6]: "none"        # Unused
-  ui[7]: "none"        # Unused
+  ui[0]: "i2s_ws"      
+  ui[1]: "i2s_sck"     
+  ui[2]: "i2s_sd_in"   
+  ui[3]: "spi_cs_n"    
+  ui[4]: "spi_sck"     
+  ui[5]: "spi_mosi"    
+  ui[6]: "none"        
+  ui[7]: "none"        
 
-  # --- Dedicated Outputs (uo_out) ---
-  uo[0]: "i2s_sd_thru" # Pass-through audio stream
-  uo[1]: "i2s_sd_lp"   # Low-Pass filtered audio stream
-  uo[2]: "i2s_sd_bp"   # Band-Pass filtered audio stream
-  uo[3]: "i2s_sd_hp"   # High-Pass filtered audio stream
-  uo[4]: "spi_miso"    # SPI Master In Slave Out
-  uo[5]: "none"        # Unused
-  uo[6]: "none"        # Unused
-  uo[7]: "none"        # Unused
+  uo[0]: "i2s_sd_out"  # single multiplexed output
+  uo[1]: "none"   
+  uo[2]: "none"   
+  uo[3]: "none"   
+  uo[4]: "spi_miso"    
+  uo[5]: "none"        
+  uo[6]: "none"        
+  uo[7]: "none"
 
   # --- Bidirectional Pins (uio_*) ---
   uio[0]: "none"
@@ -48,6 +50,3 @@ pinout:
   uio[5]: "none"
   uio[6]: "none"
   uio[7]: "none"
-
-# The clock frequency your design targets (50 MHz system clock)
-clock_hz: 50000000

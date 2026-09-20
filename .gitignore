@@ -1,0 +1,8 @@
+tb_system.vcd
+system_out.csv
+*.vcd
+tb_system.vcd
+*.vcd
+*.vvp
+*.png
+*.csv

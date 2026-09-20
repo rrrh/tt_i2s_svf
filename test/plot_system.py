@@ -1,28 +1,27 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
+# Load the simulation data
 df = pd.read_csv('system_out.csv')
-f_shifts = df['f_shift'].unique()
 
-fig, axs = plt.subplots(len(f_shifts), 1, figsize=(10, 10), sharex=False)
+# Create the plot
+plt.figure(figsize=(12, 6))
 
-for idx, f in enumerate(f_shifts):
-    subset = df[df['f_shift'] == f].copy()
-    subset['sample_idx'] = range(len(subset))
-    
-    plot_data = subset.tail(250)
-    
-    axs[idx].plot(plot_data['sample_idx'], plot_data['in'], label='Input (440Hz Sine)', color='black', linestyle='--', alpha=0.5)
-    axs[idx].plot(plot_data['sample_idx'], plot_data['lp'], label='Low-Pass', color='blue')
-    axs[idx].plot(plot_data['sample_idx'], plot_data['bp'], label='Band-Pass', color='green')
-    axs[idx].plot(plot_data['sample_idx'], plot_data['hp'], label='High-Pass', color='red')
-    
-    cutoff = "75 Hz" if f == 10 else "313 Hz" if f == 8 else "1243 Hz"
-    axs[idx].set_title(f"Full System I2S Data Stream: f_shift={f} (Cutoff ~{cutoff})")
-    axs[idx].set_ylabel("Amplitude")
-    axs[idx].legend(loc="upper right")
-    axs[idx].grid(True)
+# Plot the internal mathematical signals (dashed lines)
+plt.plot(df['time'], df['lp'], label='Internal Low-Pass', linestyle='--', alpha=0.6)
+plt.plot(df['time'], df['bp'], label='Internal Band-Pass', linestyle='--', alpha=0.6)
+plt.plot(df['time'], df['hp'], label='Internal High-Pass', linestyle='--', alpha=0.6)
 
-plt.xlabel("Sample Index")
+# Plot the actual physical output from the I2S transmitter (solid black line)
+plt.plot(df['time'], df['out_tx'], label='Physical Output (Muxed)', color='black', linewidth=2)
+
+plt.title('SVF Filter Output Multiplexer Verification')
+plt.xlabel('Simulation Time (ps)')
+plt.ylabel('Audio Amplitude')
+plt.legend(loc='upper right')
+plt.grid(True, linestyle=':', alpha=0.7)
 plt.tight_layout()
-plt.savefig("system_test_plots.png")
+
+# Save the generated graph
+plt.savefig('system_out.png')
+print("Plot successfully generated: system_out.png")

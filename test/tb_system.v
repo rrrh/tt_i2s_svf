@@ -1,9 +1,10 @@
+// test/tb_system.v
 `default_nettype none
 `timescale 1ns / 1ps
 
 module tb_system;
+    // --- System Signals ---
     reg clk, rst_n, ena;
-    
     wire [7:0] ui_in, uo_out, uio_out, uio_oe;
     wire [7:0] uio_in = 8'h00;
 
@@ -18,66 +19,84 @@ module tb_system;
     assign ui_in[5] = spi_mosi;
     assign ui_in[7:6] = 2'b00;
 
+    // --- Device Under Test ---
     tt_um_audio_filter uut (
         .ui_in(ui_in), .uo_out(uo_out), .uio_in(uio_in), .uio_out(uio_out),
         .uio_oe(uio_oe), .ena(ena), .clk(clk), .rst_n(rst_n)
     );
 
-    always #10 clk = ~clk;
-    always #325.52 i2s_sck = ~i2s_sck;
+    // --- External Receiver (To verify output multiplexing) ---
+    wire signed [15:0] out_tx;
+    wire tick_tx;
+    i2s_rx tb_rx_out (
+        .clk(clk), .rst_n(rst_n), 
+        .i2s_sck(i2s_sck), .i2s_ws(i2s_ws), .i2s_sd(uo_out[0]), 
+        .data_out(out_tx), .sample_tick(tick_tx)
+    );
 
-    real PI = 3.14159265359;
-    real fs = 48000.0;
-    real freq = 440.0;
-    real phase = 0.0;
-    real amplitude = 16000.0;
-    
-    integer fd, cfg_idx;
-    reg [7:0] configs [0:2];
+    // --- Internal Probes ---
+    wire signed [15:0] probe_in = uut.audio_in_data;
+    wire signed [15:0] probe_lp = uut.audio_lp_data;
+    wire signed [15:0] probe_bp = uut.audio_bp_data;
+    wire signed [15:0] probe_hp = uut.audio_hp_data;
+    wire [1:0]         probe_mux= uut.out_sel;
 
+    // --- Clocks ---
+    always #10 clk = ~clk;                 // 50 MHz System Clock
+    always #325.52 i2s_sck = ~i2s_sck;     // ~1.536 MHz I2S Clock
+
+    integer fd;
+
+    // --- Main Test Sequence ---
     initial begin
         $dumpfile("tb_system.vcd");
         $dumpvars(0, tb_system);
-        
-        fd = $fopen("system_out.csv", "w");
-        $fdisplay(fd, "f_shift,in,lp,bp,hp");
 
+        // Open CSV file for Python plotting
+        fd = $fopen("system_out.csv", "w");
+        $fdisplay(fd, "time,mux_sel,out_tx,lp,bp,hp");
+
+        // Initialize
         clk = 0; rst_n = 0; ena = 1;
         i2s_sck = 0; i2s_ws = 0; i2s_sd_in = 0;
         spi_cs_n = 1; spi_sck = 0; spi_mosi = 0;
 
-        configs[0] = 8'h2A;
-        configs[1] = 8'h28;
-        configs[2] = 8'h26;
-
         #1000; rst_n = 1; #1000;
 
-        fork
-            i2s_master_process();
-            test_sequence();
-        join
+        // 1. Configure Filter params (Reg 0x00 -> f_shift=4, q_shift=2 -> 0x24)
+        spi_transaction(16'h8024);
+
+        // 2. Test Output Multiplexer: THRU (Reg 0x01 -> 0x00)
+        spi_transaction(16'h8100);
+        send_i2s_sample(16'd5000);
         
-        $fclose(fd);$finish;
+        // 3. Test Output Multiplexer: LOW-PASS (Reg 0x01 -> 0x01)
+        spi_transaction(16'h8101);
+        send_i2s_sample(16'd5000);
+
+        // 4. Test Output Multiplexer: BAND-PASS (Reg 0x01 -> 0x02)
+        spi_transaction(16'h8102);
+        send_i2s_sample(16'd5000);
+
+        // 5. Test Output Multiplexer: HIGH-PASS (Reg 0x01 -> 0x03)
+        spi_transaction(16'h8103);
+        send_i2s_sample(16'd5000);
+
+        #50000;
+        $fclose(fd);$display("\n[SUCCESS] System simulation completed cleanly!");
+        $finish;
     end
 
-    always @(negedge uut.sample_ready) begin
+    // --- Monitor Printouts & CSV Logging ---
+    always @(posedge tick_tx) begin
         if (rst_n) begin
-            $fdisplay(fd, "%0d,%0d,%0d,%0d,%0d", 
-                      uut.u_core.f_shift_cfg, 
-                      uut.audio_in_data, uut.audio_lp_data, 
-                      uut.audio_bp_data, uut.audio_hp_data);
+            $display("Time: %0t | Mux Sel: %b | Serial Output: %0d | (Internal LP: %0d, BP: %0d, HP: %0d)", 
+                      $time, probe_mux, out_tx, probe_lp, probe_bp, probe_hp);
+            $fdisplay(fd, "\%0d,\%b,\%0d,\%0d,\%0d,\%0d", $time, probe_mux, out_tx, probe_lp, probe_bp, probe_hp);
         end
     end
 
-    task test_sequence;
-        begin
-            for (cfg_idx = 0; cfg_idx < 3; cfg_idx = cfg_idx + 1) begin
-                spi_transaction({8'h80, configs[cfg_idx]});
-                #15000000;
-            end
-        end
-    endtask
-
+    // --- SPI Transaction Task ---
     task spi_transaction(input [15:0] data);
         integer idx;
         begin
@@ -89,40 +108,25 @@ module tb_system;
         end
     endtask
 
-    task i2s_master_process;
-        integer bit_idx, sample_val;
-        reg [15:0] current_audio;
+    // --- I2S Sample Task ---
+    task send_i2s_sample(input signed [15:0] audio_val);
+        integer b;
         begin
-            forever begin
-                sample_val = $rtoi(amplitude * $sin(phase));
-                current_audio = sample_val[15:0];
-                
-                phase = phase + 2.0 * PI * (freq / fs);
-                if (phase > 2.0 * PI) phase = phase - 2.0 * PI;
+            // Left Channel (Active data)
+            i2s_ws = 0; @(negedge i2s_sck); i2s_sd_in = 0;
+            for (b = 15; b >= 0; b = b - 1) begin
+                @(negedge i2s_sck); i2s_sd_in = audio_val[b];
+            end
+            for (b = 14; b >= 0; b = b - 1) begin
+                @(negedge i2s_sck); i2s_sd_in = 0; 
+            end
 
-                i2s_ws = 0;
-                @(negedge i2s_sck);
-                i2s_sd_in = 0;
-                
-                for (bit_idx = 15; bit_idx >= 0; bit_idx = bit_idx - 1) begin
-                    @(negedge i2s_sck);
-                    i2s_sd_in = current_audio[bit_idx];
-                end
-                
-                for (bit_idx = 14; bit_idx >= 0; bit_idx = bit_idx - 1) begin
-                    @(negedge i2s_sck);
-                    i2s_sd_in = 0; 
-                end
-
-                @(negedge i2s_sck);
-                i2s_ws = 1; i2s_sd_in = 0; 
-                for (bit_idx = 15; bit_idx >= 0; bit_idx = bit_idx - 1) begin
-                    @(negedge i2s_sck); i2s_sd_in = 0;
-                end
-                for (bit_idx = 14; bit_idx >= 0; bit_idx = bit_idx - 1) begin
-                    @(negedge i2s_sck); i2s_sd_in = 0;
-                end
+            // Right Channel (Ignored/Zeroed)
+            @(negedge i2s_sck); i2s_ws = 1; i2s_sd_in = 0; 
+            for (b = 30; b >= 0; b = b - 1) begin
+                @(negedge i2s_sck); i2s_sd_in = 0;
             end
         end
     endtask
+
 endmodule

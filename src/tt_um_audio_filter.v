@@ -8,11 +8,10 @@ module tt_um_audio_filter (
     output wire [7:0] uio_out,
     output wire [7:0] uio_oe,
     input  wire       ena,
-    input  wire       clk,      // 50 MHz System Clock
+    input  wire       clk,
     input  wire       rst_n
 );
 
-    // --- IO Mapping ---
     wire i2s_ws    = ui_in[0];
     wire i2s_sck   = ui_in[1];
     wire i2s_sd_in = ui_in[2];
@@ -22,52 +21,45 @@ module tt_um_audio_filter (
     
     assign uio_oe  = 8'hFF; 
     assign uio_out = 8'h00;
+    
+    assign uo_out[3:1] = 3'b000;
     assign uo_out[7:5] = 3'b000;
 
-    // --- Internal Buses ---
-    wire signed [15:0] audio_in_data;
-    wire signed [15:0] audio_lp_data;
-    wire signed [15:0] audio_bp_data;
-    wire signed [15:0] audio_hp_data;
-    wire sample_ready;
-    wire spi_miso;
+    wire signed [15:0] audio_in_data, audio_lp_data, audio_bp_data, audio_hp_data;
+    wire sample_ready, spi_miso;
+    wire [1:0] out_sel;
     
     assign uo_out[4] = spi_miso;
 
-    // --- 1. I2S Receiver ---
     i2s_rx u_i2s_rx (
         .clk(clk), .rst_n(rst_n), 
         .i2s_sck(i2s_sck), .i2s_ws(i2s_ws), .i2s_sd(i2s_sd_in),
         .data_out(audio_in_data), .sample_tick(sample_ready)
     );
 
-    // --- 2. Filter Core ---
-    audio_filter_core #(
-        .DATA_WIDTH(16),
-        .CLK_DIV(100) // 50 MHz clk / 100 = 500 kHz Oversampling
-    ) u_core (
+    audio_filter_core #(.DATA_WIDTH(16), .CLK_DIV(100)) u_core (
         .clk(clk), .rst_n(rst_n),
         .spi_cs_n(spi_cs_n), .spi_sck(spi_sck), .spi_mosi(spi_mosi), .spi_miso(spi_miso),
-        .sample_tick(sample_ready),
         .audio_in(audio_in_data),
-        .audio_lp(audio_lp_data), .audio_bp(audio_bp_data), .audio_hp(audio_hp_data)
+        .audio_lp(audio_lp_data),
+        .audio_bp(audio_bp_data),
+        .audio_hp(audio_hp_data),
+        .out_sel(out_sel)
     );
 
-    // --- 3. I2S Transmitters ---
-    i2s_tx u_i2s_tx_thru (
+    // --- Output Multiplexer ---
+    reg signed [15:0] selected_tx_audio;
+    always @(*) begin
+        case (out_sel)
+            2'b00: selected_tx_audio = audio_in_data;
+            2'b01: selected_tx_audio = audio_lp_data;
+            2'b10: selected_tx_audio = audio_bp_data;
+            2'b11: selected_tx_audio = audio_hp_data;
+        endcase
+    end
+
+    i2s_tx u_i2s_tx_out (
         .clk(clk), .rst_n(rst_n), .i2s_sck(i2s_sck), .i2s_ws(i2s_ws),
-        .data_in(audio_in_data), .i2s_sd(uo_out[0])
-    );
-    i2s_tx u_i2s_tx_lp (
-        .clk(clk), .rst_n(rst_n), .i2s_sck(i2s_sck), .i2s_ws(i2s_ws),
-        .data_in(audio_lp_data), .i2s_sd(uo_out[1])
-    );
-    i2s_tx u_i2s_tx_bp (
-        .clk(clk), .rst_n(rst_n), .i2s_sck(i2s_sck), .i2s_ws(i2s_ws),
-        .data_in(audio_bp_data), .i2s_sd(uo_out[2])
-    );
-    i2s_tx u_i2s_tx_hp (
-        .clk(clk), .rst_n(rst_n), .i2s_sck(i2s_sck), .i2s_ws(i2s_ws),
-        .data_in(audio_hp_data), .i2s_sd(uo_out[3])
+        .data_in(selected_tx_audio), .i2s_sd(uo_out[0])
     );
 endmodule
