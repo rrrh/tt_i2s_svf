@@ -1,7 +1,7 @@
 yaml_version: 6
 project:
   author: "Audio Filter ASIC Developer"
-  tiles: "1x2"
+  tiles: "2x2"
   title: "Multiplierless State Variable Filter (SVF) Audio Chip"
   language: "Verilog"
   description: "An oversampled, multiplierless audio filter core featuring dynamic SPI register control and bidirectional I2S audio interfaces targeting the IHP SG13G PDK."
